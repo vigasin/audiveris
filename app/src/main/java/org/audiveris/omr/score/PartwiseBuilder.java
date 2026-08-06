@@ -317,6 +317,13 @@ public class PartwiseBuilder
     /** Map of Slur numbers, reset for every LogicalPart. */
     private final Map<SlurInter, Integer> slurNumbers = new HashMap<>();
 
+    /**
+     * Per logical part: a first ending kept open until its closing backward repeat
+     * (surviving system and page breaks — see the ending state machine in
+     * {@link #processBarline}).
+     */
+    private final Map<LogicalPart, PendingEnding> pendingEndings = new LinkedHashMap<>();
+
     /** Map of Tuplet numbers, reset for every Measure. */
     private final Map<TupletInter, Integer> tupletNumbers = new HashMap<>();
 
@@ -1162,6 +1169,48 @@ public class PartwiseBuilder
         }
     }
 
+    //--------------------//
+    // closePendingEnding //
+    //--------------------//
+    /**
+     * Force-close any pending first ending for the provided logical part, at its
+     * fallback location (where its printed bracket actually ended) — used when no
+     * closing backward repeat ever showed up.
+     *
+     * @param logicalPart the logical part at hand
+     */
+    private void closePendingEnding (LogicalPart logicalPart)
+    {
+        final PendingEnding pending = pendingEndings.remove(logicalPart);
+
+        if (pending == null) {
+            return;
+        }
+
+        if (pending.fallbackPmMeasure == null) {
+            logger.info("Unclosed {} left unterminated", pending.ending);
+
+            return;
+        }
+
+        logger.info("Unclosed {} closed at its bracket end", pending.ending);
+
+        Barline pmBarline = pending.fallbackPmBarline;
+
+        if (pmBarline == null) {
+            pmBarline = factory.createBarline();
+            pmBarline.setLocation(RightLeftMiddle.RIGHT);
+            pending.fallbackPmMeasure.getNoteOrBackupOrForward().add(pmBarline);
+        }
+
+        if (pmBarline.getEnding() == null) {
+            final Ending pmEnding = factory.createEnding();
+            pmEnding.setType(StartStopDiscontinue.DISCONTINUE);
+            pmEnding.setNumber(pending.number);
+            pmBarline.setEnding(pmEnding);
+        }
+    }
+
     //----------------//
     // processBarline //
     //----------------//
@@ -1192,18 +1241,42 @@ public class PartwiseBuilder
             String endingNumber = (ending != null) ? ending.getExportedNumber() : null;
 
             if (endingNumber == null && ending != null) {
-                // Try to infer an endingNumber
+                // Try to infer an endingNumber.
+                // An ending that immediately follows the closure of another ending
+                // (either one linked to the previous bar, or a pending first ending
+                // just closed on a backward repeat) is a second ending; otherwise
+                // it is a first one.
                 boolean isFirstNumber = true;
                 final Measure prevMeasure = current.measure.getPrecedingInPage();
                 if (prevMeasure != null) {
                     final PartBarline prevBar = prevMeasure.getRightPartBarline();
                     if (prevBar != null && prevBar.getEnding(RIGHT) != null) {
                         isFirstNumber = false;
+                    } else if (current.lastEndingStopStack == prevMeasure.getStack()) {
+                        isFirstNumber = false;
                     }
                 }
 
                 ending.setNumber(endingNumber = isFirstNumber ? "1" : "2");
             }
+
+            // Ending state machine.
+            // Engravers routinely draw a first-ending bracket shorter than its true
+            // musical region, which runs through the closing backward repeat — and a
+            // wide bracket may even span system or page breaks, leaving its right
+            // side unlinked. Closing the exported region where the ink ends yields
+            // structurally invalid MusicXML (ending 1 with no reachable stop), which
+            // unfolders reject. So: a first ending whose bracket is open (no right
+            // leg) and not sitting on its backward repeat is kept PENDING (per
+            // logical part), its too-early discontinuation is suppressed, and its
+            // STOP is emitted on the closing backward-repeat barline.
+            final boolean rightSide = (location == RightLeftMiddle.RIGHT);
+            final boolean backward = rightSide && stack.isRepeat(RIGHT);
+            final PendingEnding pending = pendingEndings.get(current.logicalPart);
+            final boolean suppressEnding = rightSide && (ending != null) && !backward
+                    && (ending.getRightLeg() == null)
+                    && (pending != null) && (pending.ending == ending);
+            final boolean closePendingHere = backward && (ending == null) && (pending != null);
 
             // Is export of barline element really needed? MusicXML says that if we just have a
             // regular barline on right side of measure, and nothing else, answer is no.
@@ -1220,7 +1293,8 @@ public class PartwiseBuilder
             // @formatter:off
             needed |= (location == RightLeftMiddle.RIGHT)
                               && (stack.isRepeat(RIGHT)
-                                          || (ending != null)
+                                          || ((ending != null) && !suppressEnding)
+                                          || closePendingHere
                                           || !fermatas.isEmpty()
                                           || (style != null && style != PartBarline.Style.REGULAR));
             // @formatter:on
@@ -1273,6 +1347,19 @@ public class PartwiseBuilder
                                 }
 
                                 pmBarline.setEnding(pmEnding);
+
+                                // A new ending opens: force-close any ending still
+                                // pending (its backward repeat never showed up).
+                                closePendingEnding(current.logicalPart);
+
+                                if ((endingNumber != null)
+                                        && endingNumber.split(",")[0].equals("1")) {
+                                    // A first ending must close on a backward
+                                    // repeat: keep it pending until one is met.
+                                    pendingEndings.put(
+                                            current.logicalPart,
+                                            new PendingEnding(ending, endingNumber));
+                                }
                             }
                         }
 
@@ -1309,7 +1396,7 @@ public class PartwiseBuilder
                             }
 
                             // (Right side of) Ending?
-                            if (ending != null) {
+                            if ((ending != null) && !suppressEnding) {
                                 Ending pmEnding = factory.createEnding();
                                 Point2D pt = ending.getLine().getP2();
 
@@ -1321,6 +1408,10 @@ public class PartwiseBuilder
                                 if (leg != null) {
                                     pmEnding.setEndLength(toTenths(leg.getY2() - pt.getY()));
                                     pmEnding.setType(StartStopDiscontinue.STOP);
+                                } else if (backward) {
+                                    // Open bracket ending right on its backward
+                                    // repeat: semantically a STOP
+                                    pmEnding.setType(StartStopDiscontinue.STOP);
                                 } else {
                                     pmEnding.setType(StartStopDiscontinue.DISCONTINUE);
                                 }
@@ -1329,15 +1420,49 @@ public class PartwiseBuilder
                                 pmEnding.setNumber(endingNumber);
 
                                 pmBarline.setEnding(pmEnding);
+
+                                if ((pending != null) && (pending.ending == ending)) {
+                                    pendingEndings.remove(current.logicalPart);
+                                }
+
+                                if ((leg != null) || backward) {
+                                    current.lastEndingStopStack = stack;
+                                }
+                            } else if (closePendingHere) {
+                                // The pending first ending closes here, on the
+                                // backward repeat its printed bracket fell short of
+                                logger.info(
+                                        "{} extended to its backward repeat at {}",
+                                        pending.ending,
+                                        stack);
+
+                                final Ending pmEnding = factory.createEnding();
+                                pmEnding.setType(StartStopDiscontinue.STOP);
+                                pmEnding.setNumber(pending.number);
+                                pmBarline.setEnding(pmEnding);
+
+                                pendingEndings.remove(current.logicalPart);
+                                current.lastEndingStopStack = stack;
                             }
                         }
                     }
 
                     // Everything is now OK
                     current.pmMeasure.getNoteOrBackupOrForward().add(pmBarline);
+
+                    if (suppressEnding) {
+                        // Remember where the discontinuation would have gone, in
+                        // case no backward repeat ever closes this ending
+                        pending.fallbackPmMeasure = current.pmMeasure;
+                        pending.fallbackPmBarline = pmBarline;
+                    }
                 } catch (Exception ex) {
                     logger.warn("Cannot process barline {} in {}", partBarline, current.page, ex);
                 }
+            }
+
+            if (suppressEnding && (pending.fallbackPmMeasure == null)) {
+                pending.fallbackPmMeasure = current.pmMeasure;
             }
 
             // Markers(Coda,Segno)? (TODO: add daCapo & dalSegno?)
@@ -1862,6 +1987,7 @@ public class PartwiseBuilder
         current.logicalPart = logicalPart;
         current.pmPart = pmPart;
         current.keys.clear();
+        current.lastEndingStopStack = null;
 
         // Delegate to children the filling of measures
         logger.debug("Populating {}", logicalPart);
@@ -2708,6 +2834,12 @@ public class PartwiseBuilder
 
         for (SheetStub stub : scoreStubs) {
             processStub(stub, partMap);
+        }
+
+        // Endings still pending at the very end of the score close at their
+        // fallback spot
+        for (LogicalPart p : new ArrayList<>(pendingEndings.keySet())) {
+            closePendingEnding(p);
         }
     }
 
@@ -3791,6 +3923,32 @@ public class PartwiseBuilder
     // Current //
     //---------//
     /** Keep references of all current entities. */
+    //---------------//
+    // PendingEnding //
+    //---------------//
+    /**
+     * A first ending whose printed bracket stopped short: kept open until its
+     * closing backward repeat, possibly beyond system and page breaks.
+     */
+    private static class PendingEnding
+    {
+        final EndingInter ending;
+
+        final String number;
+
+        /** Where the too-early discontinuation would have gone (fallback). */
+        ScorePartwise.Part.Measure fallbackPmMeasure;
+
+        Barline fallbackPmBarline;
+
+        PendingEnding (EndingInter ending,
+                       String number)
+        {
+            this.ending = ending;
+            this.number = number;
+        }
+    }
+
     private static class Current
     {
         // Score dependent
@@ -3822,6 +3980,8 @@ public class PartwiseBuilder
 
         // Measure dependent
         Measure measure;
+
+        MeasureStack lastEndingStopStack; // Stack whose right bar closed the last ending
 
         boolean repeatStarted; // True when in a sequence of repeated measures
 
