@@ -2100,7 +2100,10 @@ public class PartwiseBuilder
                 }
 
                 case DA_CAPO -> {
-                    FormattedText text = new FormattedText();
+                    // A FormattedTextId, as the "words" element is declared: a plain
+                    // FormattedText is marshalled as <words xsi:type="formatted-text">, with a
+                    // prefix nothing declares, and the exported file is not well-formed XML
+                    final FormattedTextId text = factory.createFormattedTextId();
                     text.setValue("D.C.");
                     directionType.getWordsOrSymbol().add(text);
                     sound.setDacapo(YesNo.YES);
@@ -2114,7 +2117,7 @@ public class PartwiseBuilder
                     //	</direction-type>
                     //	<sound dalsegno="9"/>
                     //  </direction>
-                    FormattedText text = new FormattedText();
+                    final FormattedTextId text = factory.createFormattedTextId();
                     text.setValue("D.S.");
                     directionType.getWordsOrSymbol().add(text);
 
