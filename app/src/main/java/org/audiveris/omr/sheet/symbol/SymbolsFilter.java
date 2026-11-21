@@ -343,6 +343,7 @@ public class SymbolsFilter
                 // Partition inters into strongs and weaks
                 final List<Inter> strongs = new ArrayList<>();
                 final List<Inter> weaks = new ArrayList<>();
+                final List<Inter> inkOnStems = new ArrayList<>();
                 systemWeaks = null;
 
                 for (Inter inter : sig.vertexSet()) {
@@ -355,9 +356,19 @@ public class SymbolsFilter
                         continue;
                     }
 
-                    // Save the lyrics
+                    // Save the lyrics, except a short item with no letter in it: that is no
+                    // syllable. A flag drawn down from its stem is read by the OCR as the digit
+                    // "2" and a line of beamless eighths as a line of lyrics "2 2 2 2"; the "3"
+                    // of a tuplet under its beam as lyrics too. Erased here, they were never
+                    // seen by the symbols step: the eighths became quarters, the triplets
+                    // plain eighths. Such an item is dropped, and its ink left in place.
                     if (inter instanceof LyricItemInter item) {
-                        strongs.add(item);
+                        if (isNoSyllable(item, maxSymbolLength)) {
+                            inkOnStems.add(item);
+                        } else {
+                            strongs.add(item);
+                        }
+
                         continue;
                     }
 
@@ -394,6 +405,9 @@ public class SymbolsFilter
                     }
                 }
 
+                // Music ink the OCR took for lyrics goes back to the symbols step
+                inkOnStems.forEach(Inter::remove);
+
                 // Simply erase the strongs
                 strongs.forEach(inter -> inter.accept(this));
 
@@ -404,6 +418,25 @@ public class SymbolsFilter
 
                 systemWeaks = null;
             }
+        }
+
+        //--------------//
+        // isNoSyllable //
+        //--------------//
+        /**
+         * Check whether a lyric item cannot be a syllable: short, and no letter in it.
+         *
+         * @param item            the lyric item to check
+         * @param maxSymbolLength the maximum length of a word that may be a symbol
+         * @return true if the item should be left to the symbols step
+         */
+        private boolean isNoSyllable (LyricItemInter item,
+                                      int maxSymbolLength)
+        {
+            final String value = item.getValue();
+
+            return (value != null) && (value.length() <= maxSymbolLength)
+                    && value.codePoints().noneMatch(Character::isLetter);
         }
 
         //-------------//
