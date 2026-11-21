@@ -117,6 +117,41 @@ public class MeasureFixer
         return termination;
     }
 
+    //------------------//
+    // isCautionaryTail //
+    //------------------//
+    /**
+     * Check for a stack that stands after the closing barline of its system and holds
+     * no note head.
+     * <p>
+     * What is printed after the last barline of a system announces what the next system
+     * opens with: a key, a time signature, a clef. It is never music.
+     * A time signature there can be taken for a rest (the stacked digits of "3/4" read as
+     * a quarter rest), and the tail then became a measure of its own, with an ID and an
+     * export. Such a stack has no barline on its right side.
+     *
+     * @param system the containing system
+     * @param stack  the stack to check
+     * @return true if so
+     */
+    private boolean isCautionaryTail (SystemInfo system,
+                                      MeasureStack stack)
+    {
+        if ((stack != system.getLastStack()) || (system.getStacks().size() < 2)
+                || stack.isMultiRest()) {
+            return false;
+        }
+
+        for (Measure measure : stack.getMeasures()) {
+            if ((measure.getRightPartBarline() != null) || !measure.getHeadChords().isEmpty()
+                    || !measure.getMeasureRepeats().isEmpty()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     //---------//
     // isEmpty //
     //---------//
@@ -294,8 +329,9 @@ public class MeasureFixer
                     stackTermination,
                     (stackTermination != null) ? ("=" + stackTermination) : "");
 
-            if (isEmpty(stack)) {
+            if (isEmpty(stack) || isCautionaryTail(system, stack)) {
                 // This whole stack is empty (no notes/rests, hence no voices)
+                // or it holds only what was misread after the system closing barline
                 logger.debug("empty");
 
                 if (stack != system.getLastStack()) {
