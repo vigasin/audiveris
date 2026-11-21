@@ -469,6 +469,17 @@ public class ResidualClefBuilder
             return null; // Missing grade, or confidently explained by something else -- hands off
         }
 
+        // A claim the main pipeline corroborated is not weak, however modest its own grade:
+        // the void heads of a real chord grade 0.62-0.65 by their shape alone in some engravings
+        // (right at the ceiling above) and 0.92+ in context, with their stem and their chord.
+        // Three of them stacked on one stem were taken for the ink of a small F clef.
+        final Double contextualGrade = claimant.getContextualGrade();
+
+        if ((contextualGrade != null)
+                && (contextualGrade > constants.weakClaimContextualCeiling.getValue())) {
+            return null;
+        }
+
         return claimant;
     }
 
@@ -503,6 +514,12 @@ public class ResidualClefBuilder
                         + " built from just a couple of simplified fragments is not guaranteed to"
                         + " have the correct clef shape as its single top guess, only somewhere"
                         + " near the top.");
+
+        private final Evaluation.Grade weakClaimContextualCeiling = new Evaluation.Grade(
+                0.85,
+                "An Inter whose contextual grade is above this value is corroborated by its"
+                        + " relations (a head by its stem and chord) and is never reclaimed as"
+                        + " clef ink, whatever its intrinsic grade.");
 
         private final Evaluation.Grade weakClaimGradeCeiling = new Evaluation.Grade(
                 0.65,

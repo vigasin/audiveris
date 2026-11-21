@@ -248,7 +248,13 @@ public class ScaleBuilder
                             maxHeight));
         }
 
-        final List<Integer> peaks = histoKeeper.blackFunction.getLocalMaxima(minHeight, maxHeight);
+        // The upper bound itself is left out: it stands right below the interline, where the
+        // runs through note heads peak. A maximum sitting on it is the foot of that peak, not
+        // a beam (heads 19 pixels high at interline 20: the range is [9..19], and 19 at 157% of
+        // quorum won over the true beam height, 10 at 153% -- no beam was found on the sheet).
+        final List<Integer> peaks = histoKeeper.blackFunction.getLocalMaxima(
+                minHeight,
+                maxHeight - 1);
 
         if (!peaks.isEmpty()) {
             final int peak = peaks.get(0);
