@@ -457,11 +457,13 @@ public class SigReducer
     {
         logger.debug("S#{} checkAbnormals", system.getId());
 
-        final Set<Inter> toRemove = sig.vertexSet().stream() //
+        // In the order of the sig, not of a hash set of inters (their hash codes change
+        // from run to run): removing a lyric item renumbers the lyric lines of its part
+        final List<Inter> toRemove = sig.vertexSet().stream() //
                 .filter(inter -> inter.isAbnormal()) //
                 .filter(inter -> !inter.canStayAbnormal()) //
                 .filter(inter -> !inter.isManual()) //
-                .collect(Collectors.toSet());
+                .collect(Collectors.toList());
         toRemove.forEach(inter -> inter.remove());
 
         return toRemove.size();
