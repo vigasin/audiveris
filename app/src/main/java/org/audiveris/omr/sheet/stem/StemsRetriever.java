@@ -767,14 +767,18 @@ public class StemsRetriever
             Set<Relation> connections = sig.getRelations(barline, BarConnectionRelation.class);
 
             for (Relation connection : connections) {
-                BarlineInter source = (BarlineInter) sig.getEdgeSource(connection);
+                // A connection may also link a barline with a bracket (seen on a 24-staff
+                // conductor score): there is no pair of barlines to protect then
+                if (!(sig.getEdgeSource(connection) instanceof BarlineInter source)
+                        || !(sig.getEdgeTarget(connection) instanceof BarlineInter target)) {
+                    continue;
+                }
 
                 if (source == barline) {
                     // Top area
                     areas.add(barline.getArea());
 
                     // Bottom area
-                    BarlineInter target = (BarlineInter) sig.getEdgeTarget(connection);
                     areas.add(target.getArea());
 
                     // Middle area
