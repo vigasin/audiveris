@@ -597,7 +597,7 @@ public class DotFactory
      */
     public void lateDotChecks ()
     {
-        Collections.sort(dots, Dot.byAbscissa);
+        sortDots();
 
         // Run all late checks
         lateAugmentationChecks(); // Note-Dot and Note-Dot-Dot configurations
@@ -660,6 +660,37 @@ public class DotFactory
         checkStackRepeats();
     }
 
+    //----------//
+    // sortDots //
+    //----------//
+    /**
+     * Order the dots left to right and, within a column, top down.
+     * <p>
+     * The dots of a chord stand one above the other, and the lookup of a head for a dot assumes
+     * that the dots above it were served first: a lower dot taken first takes the head of the
+     * upper one. A column is made of the dots whose abscissa range reaches the left-most of them
+     * (the dots of a chord may be drawn a pixel or two apart).
+     */
+    private void sortDots ()
+    {
+        Collections.sort(dots, Dot.byAbscissa);
+
+        int start = 0;
+
+        while (start < dots.size()) {
+            final Rectangle first = dots.get(start).getBounds();
+            int stop = start + 1;
+
+            while ((stop < dots.size()) && (dots.get(stop).getBounds().x < (first.x
+                    + first.width))) {
+                stop++;
+            }
+
+            Collections.sort(dots.subList(start, stop), Dot.byOrdinate);
+            start = stop;
+        }
+    }
+
     //~ Inner Classes ------------------------------------------------------------------------------
 
     //-----------//
@@ -687,6 +718,14 @@ public class DotFactory
         public static final Comparator<Dot> byAbscissa = (Dot d1,
                                                           Dot d2) -> {
             return Integer.compare(d1.getBounds().x, d2.getBounds().x);
+        };
+
+        /**
+         * Sorting dots by top ordinate.
+         */
+        public static final Comparator<Dot> byOrdinate = (Dot d1,
+                                                          Dot d2) -> {
+            return Integer.compare(d1.getBounds().y, d2.getBounds().y);
         };
 
         public abstract int getAnnotationId ();
