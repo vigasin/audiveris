@@ -730,7 +730,8 @@ public class BasicSection
     public int hashCode ()
     {
         int hash = 7;
-        hash = (43 * hash) + Objects.hashCode(this.orientation);
+        // An enum's hashCode() is its identity hash, which changes from run to run
+        hash = (43 * hash) + ((orientation != null) ? orientation.ordinal() : 0);
         hash = (43 * hash) + this.weight;
 
         return hash;

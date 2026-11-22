@@ -41,6 +41,10 @@ public class RunTableTest
 {
     private static final Dimension dim = new Dimension(10, 5);
 
+    private static final int HORIZONTAL_HASH = 142444287;
+
+    private static final int VERTICAL_HASH = 143016074;
+
     /**
      * Creates a new <code>RunTableTest</code> object.
      */
@@ -130,6 +134,19 @@ public class RunTableTest
         expResult = false;
         result = instance.equals(that);
         assertEquals(expResult, result);
+    }
+
+    /**
+     * The hash code is the same in every JVM: a set of glyphs must iterate in the
+     * same order from run to run, or the transcription of a sheet depends on the run.
+     */
+    @Test
+    public void testHashCodeIsTheSameInEveryJvm ()
+    {
+        System.out.println("\n+++ hashCode");
+
+        assertEquals(HORIZONTAL_HASH, createHorizontalInstance().hashCode());
+        assertEquals(VERTICAL_HASH, createVerticalInstance().hashCode());
     }
 
     /**
