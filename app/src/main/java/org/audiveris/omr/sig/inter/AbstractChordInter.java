@@ -577,7 +577,14 @@ public abstract class AbstractChordInter
                     }
 
                     if (fbn > MAX_BEAMS_OR_FLAGS) {
-                        logger.warn(ct.trans("chord.carries.too", this, fbn, MAX_BEAMS_OR_FLAGS));
+                        // Named by class and id: toString() reports the duration, which
+                        // is what is being computed here, and would warn again without end
+                        logger.warn(
+                                ct.trans(
+                                        "chord.carries.too",
+                                        getClass().getSimpleName() + "#" + getId(),
+                                        fbn,
+                                        MAX_BEAMS_OR_FLAGS));
                         logger.warn(ct.trans("duration.taken.as.if", MAX_BEAMS_OR_FLAGS));
                     }
 
